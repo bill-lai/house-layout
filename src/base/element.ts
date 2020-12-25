@@ -1,7 +1,6 @@
 import responsive, { Interact } from 'data-interact'
-import { ElementArgs, Style, point } from '../constant/type'
+import { ElementArgs, Style, point, DragStart } from '../constant/type'
 import Renderer from './render'
-import { throttle } from '../util'
 
 // 让渲染器与ele挂钩
 const initRender = (ele: CADElement, renderer: Renderer, zIndex: number) => {
@@ -11,9 +10,15 @@ const initRender = (ele: CADElement, renderer: Renderer, zIndex: number) => {
   ele.real = ele.grentNode()
 
   // 修改渲染器的适合及时更新视图
-  renderer.convert.api.update(ele.update)
+  renderer.convert.api.update(
+    () => {
+      ele.updateStyle && ele.updateStyle()
+      ele.updateData && ele.updateData()
+    }
+  )
   renderer.push(ele)
   
+  // 将当前对象挂钩渲染器
   Object.defineProperties(ele, {
     multiple: {
       get: () => renderer.convert.multiple / renderer.convert.scale
@@ -22,23 +27,23 @@ const initRender = (ele: CADElement, renderer: Renderer, zIndex: number) => {
 
   ele.renderer = renderer
 
-  bindDrag(ele)
+  return bindDrag(ele)
 }
 
+// 绑定鼠标操作
 const bindDrag = (ele: CADElement) => {
   const parent = document.documentElement
-
-  ele.real.addEventListener('mousedown', (ev) => {
+  const mousedownHandle = (ev) => {
     const start = { x: ev.offsetX, y: ev.offsetY }
     ele.dragStart && ele.dragStart(start, ev)
 
-    const moveHandle = throttle((ev: SVGElementEventMap['mousemove']) => {
+    const moveHandle = (ev: SVGElementEventMap['mousemove']) => {
       let curr = { x: ev.offsetX, y: ev.offsetY }
       let move = { x: curr.x - start.x, y: curr.y - start.y }
 
       ele.dragMove && ele.dragMove(move, curr, start, ev)
       ev.preventDefault()
-    }, 10)
+    }
 
     const upHandle = (ev: SVGElementEventMap['mouseup']) => {
       ele.dragEnd && ele.dragEnd(ev)
@@ -48,15 +53,24 @@ const bindDrag = (ele: CADElement) => {
 
     parent.addEventListener('mousemove', moveHandle, false)
     parent.addEventListener('mouseup', upHandle, false)
-  })
+  }
+
+  ele.real.addEventListener('mousedown', mousedownHandle)
+
+  return () => {
+    ele.real.removeEventListener('mousedown', mousedownHandle)
+  }
 }
 
 
 abstract class CADElement<T = {}, I = {}> {
+
   // 解除自动关联方法
   private unAutoChangeStyle: () => void
+  // 销毁初建绑定的一下方法数据
+  private unInit: () => void
   // 需要维护的核心数据
-  data: Interact<T>
+  data: Interact<T> 
   // 需要维护的样式
   style: Interact<I>
   // 层级
@@ -70,28 +84,32 @@ abstract class CADElement<T = {}, I = {}> {
   // 渲染器
   renderer: Renderer
   
-
   constructor(args: ElementArgs<T, I> = {}) {
     const { data, style, renderer, zIndex } = args
 
-    this.update = this.update.bind(this)
-    this.intercept = this.intercept.bind(this)
+    this.updateStyle = this.updateStyle && this.updateStyle.bind(this)
+    this.updateData = this.updateData && this.updateData.bind(this)
+    this.intercept = this.intercept && this.intercept.bind(this)
 
     // 修改渲染器的适合及时更新视图
-    initRender(this, renderer, zIndex)
+    this.unInit = initRender(this, renderer, zIndex)
 
     // 如果样式修改则渲染
     if (style) {
       this.style = responsive(style)
-      renderer && this.style.api.update(this.update)
+      this.updateStyle && this.style.api.update(this.updateStyle)
     }
 
     // 如果有拦截以及有数据
     if (data) {
       this.data = responsive(data)
-      renderer && this.data.api.update(this.update)
-      this.intercept && this.data.api.stop(this.intercept)
+      this.updateData && this.data.api.update(this.updateData)
+      this.intercept && this.data.api.stop<T>(this.intercept)
     }
+
+    
+    this.updateStyle && this.updateStyle()
+    this.updateData && this.updateData()
   }
 
   // 自动悬浮，选中，等样式
@@ -124,7 +142,7 @@ abstract class CADElement<T = {}, I = {}> {
     }
     const leaveHandle = () => {
       hover = false
-      setHoverStyle()
+      setUnHoverStyle()
     }
 
     Object.defineProperties(this, {
@@ -149,17 +167,21 @@ abstract class CADElement<T = {}, I = {}> {
   }
 
   destory() {
-    this.renderer.remove(this)
+    this.unInit()
     this.unAutoChangeStyle && this.unAutoChangeStyle()
+    this.renderer.remove(this)
   }
 
-  abstract dragStart?(pos: point, ev: SVGElementEventMap['mousedown'])
-  abstract dragMove?(move: point, current: point, start: point, ev: SVGElementEventMap['mousemove'])
-  abstract dragEnd?(ev: SVGElementEventMap['mouseup'])
-  abstract intercept?()
-  abstract grentNode(): SVGElement
-  abstract drag(move: point)
-  abstract update()
+  
+  dragStart?(pos: point, ev: SVGElementEventMap['mousedown'])
+  dragMove?(move: point, current: point, start: point, ev: SVGElementEventMap['mousemove'])
+  dragEnd?(ev: SVGElementEventMap['mouseup'])
+  intercept?(data: Interact<T>)
+  grentNode?(): SVGElement
+  drag?(move: point)
+  updateStyle?()
+  updateData?()
 }
 
 export default CADElement
+export { ElementArgs, Interact }

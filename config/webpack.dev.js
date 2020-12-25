@@ -53,7 +53,7 @@ module.exports = {
     watchContentBase: true,
     hot: true,  //开启热模替换功能
     open: true,  //自动打开浏览器
-    port: 8001
+    port: 7000
   },
   mode: 'development'
 }

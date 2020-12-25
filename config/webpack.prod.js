@@ -2,11 +2,11 @@ const { resolve } = require('path')
 const { CleanWebpackPlugin } = require('clean-webpack-plugin')
 
 module.exports = {
-  entry: './src/export.ts',
+  entry: './src/index.ts',
   output: {
-    filename: './lastingStack.js',
+    filename: './cad.js',
     path: resolve('dist'),
-    library: 'lastingStack',
+    library: 'cad',
     libraryTarget: 'umd'
   },
   module: {

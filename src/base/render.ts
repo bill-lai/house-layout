@@ -3,6 +3,28 @@ import { point, convert } from '../constant/type'
 import responsive, { Interact } from 'data-interact'
 import Element from './element'
 
+
+// 获取当前图像与真实DOM转换比例以及转换后wh
+const getMapMultipleWH = (domWidth: number, domHeight: number, points: Array<point>, padding: number = 10) => {
+  let minX = Math.abs(Math.min(...points.map(p => p.x)))
+  let maxX = Math.abs(Math.max(...points.map(p => p.x)))
+  let minY = Math.abs(Math.min(...points.map(p => p.y)))
+  let maxY = Math.abs(Math.max(...points.map(p => p.y)))
+  let xRang = Math.ceil( minX + maxX )
+  let yRang = Math.ceil( minY + maxY )
+  let xMultiple = xRang / (domWidth)
+  let yMultiple = yRang / (domHeight)
+  let multiple = xMultiple > yMultiple ? xMultiple : yMultiple
+  let width = domWidth * multiple
+  let height = domHeight * multiple
+  let top = ((minY / (minY + maxY)) * height) 
+  let left = ((minX / (minX + maxX)) * width) 
+  let scale = 1 - (padding * 2) * multiple / width
+
+  return { width, height, multiple, left, top, scale }
+}
+
+
 class Renderer {
   private selectHandle: (ev: Event) => void
   layer: HTMLElement
@@ -33,6 +55,7 @@ class Renderer {
     this.svg.setAttribute('xmlns', SVGURI)
     this.svg.setAttribute('xmlns:xlink', SVGPATH)
 
+    console.log(this.svg, this.layer)
     this.svg.appendChild(this.g)
     this.layer.appendChild(this.svg)
 
@@ -58,11 +81,26 @@ class Renderer {
       scale: 1
     })
     // 代理监听
-    this.convert.api.update(this.adapt.bind(this))
+    this.convert.api.update(this.convertUpdate.bind(this))
+    this.convertUpdate()
+  }
+  
+  // 根据参数适应，points所有点位，padding留白区
+  adapt(points: Array<point>, padding: number) {
+    let convert = getMapMultipleWH(
+      this.layer.offsetWidth,
+      this.layer.offsetHeight,
+      points,
+      padding
+    )
+
+    for (let key in convert) {
+      this.convert[key] = convert[key]
+    }
   }
 
-  // 根据参数适应
-  adapt() {
+  // 渲染容器
+  convertUpdate() {
     let centerStepX = this.convert.width / 2 - this.convert.left
     let centerStepY = this.convert.height / 2 - this.convert.top
 
@@ -76,6 +114,7 @@ class Renderer {
     this.svg.setAttribute('height', this.convert.domHeight.toString())
     this.svg.setAttribute('viewBox', `0 0 ${this.convert.width} ${this.convert.height}`)
   }
+
 
   // dom坐标转换为真实坐标
   screenToRealPoint({ x, y }: point): point {
